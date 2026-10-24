@@ -13,8 +13,6 @@ Leadix is a multi-tenant Customer Relationship Management (CRM) and revenue pipe
 
 ---
 
-## Screenshot
-
 ![Leadix Landing Page](docs/screenshots/landing-page.png)
 
 ---
@@ -433,7 +431,7 @@ Leadix-App/
 │   ├── migrations/               # Schema migrations with foreign key constraints
 │   └── seeders/                  # Database seeders (LeadixSeeder)
 ├── docs/
-│   └── screenshots/              # Landing page screenshot
+│   └── screenshots/              # Landing page preview image
 ├── public/                       # Web server public document root
 ├── resources/
 │   ├── css/                      # Application CSS and Tailwind imports
