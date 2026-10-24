@@ -32,6 +32,99 @@ Leadix is a multi-tenant Customer Relationship Management (CRM) and revenue pipe
 
 ## System Architecture
 
+### High-Level Architecture and Component Boundaries
+
+```mermaid
+flowchart TD
+    subgraph Client_Tier["Client Tier (Untrusted Zone)"]
+        Browser["User Browser (Admin / Sales / Finance)"]
+        UI["Blade UI + Alpine.js Reactive Components"]
+        Kanban["SortableJS Kanban Pipeline"]
+        Poller["Notification Poller (notification-poller.js)"]
+    end
+
+    subgraph Ingress_Tier["Ingress & Web Server Tier"]
+        WebServer["Web Server / Reverse Proxy (:8000)"]
+        StaticAssets["Static Asset Pipeline (Vite / public/build)"]
+    end
+
+    subgraph Application_Tier["Application Tier (Laravel 12 / PHP 8.2+)"]
+        direction TB
+
+        subgraph Middleware_Stack["HTTP Middleware Stack"]
+            CSRF["CSRF Protection (ValidateCsrfToken)"]
+            AuthMiddleware["Session Authenticate Middleware"]
+            RateLimit["RateLimiter (Login Throttle 5 req/min)"]
+        end
+
+        subgraph Controller_Layer["Controller Layer (app/Http/Controllers)"]
+            LeadCtrl["LeadController"]
+            DealCtrl["DealController"]
+            InvoiceCtrl["InvoiceController"]
+            PaymentCtrl["PaymentController"]
+            CashflowCtrl["CashflowController"]
+            OrgCtrl["OrganizationController"]
+        end
+
+        subgraph Business_Services["Business Logic & Service Layer"]
+            PdfService["InvoicePdfService (DomPDF Engine)"]
+            FormRequests["Form Request Validation Layer"]
+        end
+
+        subgraph Observers_Events["Automated Observers & Lifecycle"]
+            DealObserver["DealObserver (Stage: Won -> Auto Invoice)"]
+            PaymentObserver["PaymentObserver (State Change -> Activity Log)"]
+        end
+
+        subgraph Tenancy_Layer["Multi-Tenancy Layer (app/Traits)"]
+            Trait["BelongsToOrganization Trait"]
+            Scope["TenantScope (WHERE organization_id = Auth::user->org_id)"]
+        end
+    end
+
+    subgraph Data_Tier["Data & Persistence Tier"]
+        DB[(Primary Database: SQLite / MySQL)]
+        Sessions[(Session Store: database/sessions)]
+        FileStore["Storage Disk (storage/app / PDF Invoices)"]
+        Logs["Application Logs (storage/logs/laravel.log)"]
+    end
+
+    %% Client Interactions
+    Browser -->|HTTP Requests / Session Cookies| WebServer
+    Browser --- UI
+    UI --- Kanban
+    Poller -->|GET /notifications/unread Polling| WebServer
+
+    %% Ingress to Middleware
+    WebServer -->|Static Requests| StaticAssets
+    WebServer -->|App Requests /| CSRF
+    CSRF --> AuthMiddleware
+    AuthMiddleware --> RateLimit
+
+    %% Middleware to Controllers
+    RateLimit --> Controller_Layer
+
+    %% Controllers to Services & Validation
+    Controller_Layer --> FormRequests
+    InvoiceCtrl --> PdfService
+    PdfService -->|Save / Stream PDF| FileStore
+
+    %% Controllers to Observers
+    DealCtrl -.->|Deal Stage Transition| DealObserver
+    PaymentCtrl -.->|Payment Created| PaymentObserver
+    DealObserver ==>|Auto-generate Invoice| InvoiceCtrl
+
+    %% Tenancy Enforcement
+    Controller_Layer --> Tenancy_Layer
+    Tenancy_Layer --> Scope
+
+    %% Persistence Interactions
+    Scope -->|Scoped SQL Queries| DB
+    AuthMiddleware <-->|Read / Write Session Data| Sessions
+    PaymentObserver -->|Log Activity Entry| DB
+    Application_Tier -->|Error & Audit Traces| Logs
+```
+
 ### Request Flow and Tenant Resolution
 
 ```mermaid
